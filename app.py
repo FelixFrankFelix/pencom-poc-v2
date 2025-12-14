@@ -2,6 +2,7 @@ import streamlit as st
 
 from src.utils import handle_email_function, extract_emails
 
+
 # Page configuration
 st.set_page_config(page_title="PENCOM-CM", page_icon="📧", layout="centered")
 

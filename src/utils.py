@@ -3,27 +3,26 @@ import requests
 import yaml
 import re
 import uuid
-import redis
+# import redis
 import boto3
 import json
 from bs4 import BeautifulSoup
 
 from src import logger
 from config import settings
-from src.rag_bot import SimplifiedRAG
 
 
 # Redis connection
-try:
-    if settings.REDIS_URL:
-        redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True, ssl_cert_reqs=None)
-        logger.info("Redis connection established successfully")
-    else:
-        redis_client = None
-        logger.warning("No Redis URL provided, Redis functionality disabled")
-except Exception as e:
-    logger.error(f"Redis connection failed: {e}")
-    redis_client = None
+# try:
+#     if settings.REDIS_URL:
+#         redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True, ssl_cert_reqs=None)
+#         logger.info("Redis connection established successfully")
+#     else:
+#         redis_client = None
+#         logger.warning("No Redis URL provided, Redis functionality disabled")
+# except Exception as e:
+#     logger.error(f"Redis connection failed: {e}")
+#     redis_client = None
 
 
 bedrock = boto3.client(
@@ -31,7 +30,6 @@ bedrock = boto3.client(
     region_name="us-east-1"  # change if needed
 )
 MODEL_ID = "amazon.nova-pro-v1:0"
-bot = SimplifiedRAG()
 
 
 def generate_complaint_id():
@@ -40,12 +38,12 @@ def generate_complaint_id():
     complaint_id = str(uuid.uuid4())
     logger.info(f"Generated complaint ID: {complaint_id}")
     # Create persistent Redis key (no expiration)
-    if redis_client:
-        try:
-            redis_client.hset(f"complaint:{complaint_id}", "created_at", str(uuid.uuid1().time))
-            logger.info(f"Stored complaint ID in Redis: {complaint_id}")
-        except Exception as e:
-            logger.error(f"Redis error storing complaint ID: {e}")
+    # if redis_client:
+        # try:
+        #     redis_client.hset(f"complaint:{complaint_id}", "created_at", str(uuid.uuid1().time))
+        #     logger.info(f"Stored complaint ID in Redis: {complaint_id}")
+        # except Exception as e:
+        #     logger.error(f"Redis error storing complaint ID: {e}")
     return complaint_id
 
 
@@ -189,7 +187,7 @@ def send_acknowledgement_response(complaint_id, complaint_email: str, subject: s
     # reply sender email
     try:
         send_email_function(complaint_email, response_subject, final_html)
-        add_complaint_data(complaint_id, "issue_handler", final_html)
+        # add_complaint_data(complaint_id, "issue_handler", final_html)
         logger.info(f"Successfully sent acknowledgement to {complaint_email}")
     except Exception as e:
         logger.error(f"Error sending acknowledgement email to {complaint_email}: {e}")
@@ -324,22 +322,25 @@ def handle_issue(complaint_id, assigned_input, body):
         logger.info(f"Routing to CS: {assigned_input['classification']}")
         send_email_function(settings.CS, f"Issue Assigned to {assigned_input['classification']}", html_content)
     
-    add_complaint_data(complaint_id, "assined_unit", html_content)
+    # add_complaint_data(complaint_id, "assined_unit", html_content)
 
     
 def handle_email_function(complaint_email: str, subject: str, body: str):
     """
     Handle the email sending process.
     """
+    from src.rag_bot import SimplifiedRAG
+    
     logger.info(f"Starting email handling process for: {complaint_email}")
     complaint_id = generate_complaint_id()
     # first_name = extract_sender(body)["first_name"]
     
-    add_complaint_data(complaint_id, "complaint_email", complaint_email)
-    add_complaint_data(complaint_id, "conplain_subject", subject)
-    add_complaint_data(complaint_id, "complain_body", body)
+    # add_complaint_data(complaint_id, "complaint_email", complaint_email)
+    # add_complaint_data(complaint_id, "conplain_subject", subject)
+    # add_complaint_data(complaint_id, "complain_body", body)
     logger.info(f"Processing complaint {complaint_id} from {complaint_email}")
 
+    bot = SimplifiedRAG()
     llm_response = bot.ask_questions(body)['answer']
     logger.info(f"LLM response received for complaint: {llm_response}")
 

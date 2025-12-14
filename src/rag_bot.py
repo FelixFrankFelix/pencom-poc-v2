@@ -22,7 +22,7 @@ from PyPDF2 import PdfReader
 from pinecone import Pinecone, ServerlessSpec
 
 from config import settings
-from src.prompt import PENCOM_RAG_SYSTEM_PROMPT
+from src.utils import load_llm_prompt, render_prompt
 
 
 # Use the logger initialized in the main app module or configure one here
@@ -621,18 +621,16 @@ class SimplifiedRAG:
             context_text = "\n\n".join(context_chunks)
             
             # Create the prompt with context using imported prompt template
-            prompt = f"""{PENCOM_RAG_SYSTEM_PROMPT}
+            system_prompt, user_prompt_template = load_llm_prompt(
+                "prompt/rag_system_prompt.yaml"
+            )
 
-                        Context Information:
-                        {context_text}
-
-                        User's Question: {question}
-
-                        Response Format:
-                        {{
-                            "html_content": "[Complete HTML response as string]",
-                            "escalate": true/false
-                        }}"""
+            prompt = render_prompt(
+                user_prompt_template,
+                PENCOM_RAG_SYSTEM_PROMPT=system_prompt,
+                context=context_text,
+                question=question
+            )
 
             # Format the request for AWS Nova Pro
             request_body = json.dumps({
