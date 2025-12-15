@@ -75,6 +75,7 @@ with col2:
                 # Run the send function
                 with st.spinner("Sending email..."):
                     handle_email_function(sender_email, subject, email_body)
+                st.success("Email sent successfully!")
 
 with col3:
     if st.button("🗑️ Clear", use_container_width=True):
@@ -82,4 +83,4 @@ with col3:
 
 # Footer
 st.markdown("---")
-st.caption("📧 Email Composer App | Built with Streamlit")
+st.caption("QUCOON 2025")
