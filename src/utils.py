@@ -3,7 +3,6 @@ import requests
 import yaml
 import re
 import uuid
-# import redis
 import boto3
 import json
 from bs4 import BeautifulSoup
@@ -11,70 +10,38 @@ from bs4 import BeautifulSoup
 from src import logger
 from config import settings
 
-
-# Redis connection
-# try:
-#     if settings.REDIS_URL:
-#         redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True, ssl_cert_reqs=None)
-#         logger.info("Redis connection established successfully")
-#     else:
-#         redis_client = None
-#         logger.warning("No Redis URL provided, Redis functionality disabled")
-# except Exception as e:
-#     logger.error(f"Redis connection failed: {e}")
-#     redis_client = None
-
+# Redis connection disabled
+redis_client = None
 
 bedrock = boto3.client(
     service_name="bedrock-runtime",
-    region_name="us-east-1"  # change if needed
+    region_name=settings.AWS_REGION,
+    aws_access_key_id=settings.ACCESS_KEY_ID,
+    aws_secret_access_key=settings.SECRET_ACCESS_KEY
 )
 MODEL_ID = "amazon.nova-pro-v1:0"
 
 
 def generate_complaint_id():
-    """Generate a random UUID for complaint ID and store in Redis"""
+    """Generate a random UUID for complaint ID"""
     logger.info("Generating new complaint ID")
     complaint_id = str(uuid.uuid4())
     logger.info(f"Generated complaint ID: {complaint_id}")
-    # Create persistent Redis key (no expiration)
-    # if redis_client:
-        # try:
-        #     redis_client.hset(f"complaint:{complaint_id}", "created_at", str(uuid.uuid1().time))
-        #     logger.info(f"Stored complaint ID in Redis: {complaint_id}")
-        # except Exception as e:
-        #     logger.error(f"Redis error storing complaint ID: {e}")
     return complaint_id
 
 
 def add_complaint_data(complaint_id: str, key: str, value: str):
     """Add key-value pair to complaint ID in Redis"""
     logger.info(f"Adding data to complaint {complaint_id}: {key}")
-    if redis_client:
-        try:
-            redis_client.hset(f"complaint:{complaint_id}", key, value)
-            logger.info(f"Successfully added {key} to complaint {complaint_id}")
-        except Exception as e:
-            logger.error(f"Redis error adding data to complaint {complaint_id}: {e}")
+    # Redis functionality disabled
+    pass
 
 
 def get_complaint_data(complaint_id: str, key: str = None):
     """Get data from complaint ID in Redis"""
     logger.info(f"Retrieving data from complaint {complaint_id}, key: {key}")
-    if not redis_client:
-        logger.warning("Redis client not available")
-        return None
-    try:
-        if key:
-            result = redis_client.hget(f"complaint:{complaint_id}", key)
-            logger.info(f"Retrieved {key} from complaint {complaint_id}")
-            return result
-        result = redis_client.hgetall(f"complaint:{complaint_id}")
-        logger.info(f"Retrieved all data from complaint {complaint_id}")
-        return result
-    except Exception as e:
-        logger.error(f"Redis error retrieving data from complaint {complaint_id}: {e}")
-        return None
+    logger.warning("Redis client not available")
+    return None
 
 
 def extract_emails(text):
@@ -106,20 +73,12 @@ def send_email_function(recipient_email: str, subject: str, body: str, filename:
         "Content-Type": "application/json",
     }
 
-    # attachment = {
-    #     "content": base64.b64encode(file_content).decode(),
-    #     "type": "text/csv",
-    #     "filename": filename,
-    #     "disposition": "attachment"
-    # }
-
     data = {
         "personalizations": [
             {"to": [{"email": recipient_email}], "subject": subject}
         ],
         "from": {"email": settings.EMAIL_ADDRESS},
         "content": [{"type": "text/html", "value": body}]
-        # "attachments": [attachment]
     }
 
     response = requests.post(url, headers=headers, json=data)
@@ -184,10 +143,8 @@ def send_acknowledgement_response(complaint_id, complaint_email: str, subject: s
     )
 
     response_subject = "Re: " + subject
-    # reply sender email
     try:
         send_email_function(complaint_email, response_subject, final_html)
-        # add_complaint_data(complaint_id, "issue_handler", final_html)
         logger.info(f"Successfully sent acknowledgement to {complaint_email}")
     except Exception as e:
         logger.error(f"Error sending acknowledgement email to {complaint_email}: {e}")
@@ -244,7 +201,6 @@ def get_response(system_instruction: str, user_input: str, model: str = MODEL_ID
 
 def extract_sender(complaint_text: str) -> dict:
     logger.info("Extracting sender information from complaint text")
-    # Load & render prompt
     system_prompt, user_prompt_template = load_llm_prompt(
         "prompt/extract_sender.yaml"
     )
@@ -258,7 +214,6 @@ def extract_sender(complaint_text: str) -> dict:
         user_input=user_prompt
     )
 
-    # Safe JSON parse
     try:
         result = json.loads(raw_response)
         logger.info(f"Successfully extracted sender info: {result.get('first_name', 'Unknown')}")
@@ -274,7 +229,6 @@ def extract_sender(complaint_text: str) -> dict:
 
 def classify_issue(email_content: str):
     logger.info("Classifying issue from email content")
-    # Load & render prompt
     system_prompt, user_prompt_template = load_llm_prompt(
         "prompt/router.yaml"
     )
@@ -288,13 +242,22 @@ def classify_issue(email_content: str):
         user_input=user_prompt
     )
 
-    # Safe JSON parse
     try:
         result = json.loads(raw_response)
         logger.info(f"Successfully classified issue: {result.get('classification', 'Unknown')}")
         return result
     except json.JSONDecodeError:
         logger.error("LLM returned invalid JSON for issue classification")
+        return {
+            "classification_id": 1,
+            "classification": "RSA Unit",
+            "confidence": "Low",
+            "primary_issue": "Unable to classify issue due to system error",
+            "keywords_identified": [],
+            "reasoning": "System error occurred during classification",
+            "suggested_priority": "Normal",
+            "requires_escalation": False
+        }
 
 
 def handle_issue(complaint_id, assigned_input, body):
@@ -321,10 +284,8 @@ def handle_issue(complaint_id, assigned_input, body):
     if classification_id == 3:
         logger.info(f"Routing to CS: {assigned_input['classification']}")
         send_email_function(settings.CS, f"Issue Assigned to {assigned_input['classification']}", html_content)
-    
-    # add_complaint_data(complaint_id, "assined_unit", html_content)
 
-    
+
 def handle_email_function(complaint_email: str, subject: str, body: str):
     """
     Handle the email sending process.
@@ -333,11 +294,6 @@ def handle_email_function(complaint_email: str, subject: str, body: str):
     
     logger.info(f"Starting email handling process for: {complaint_email}")
     complaint_id = generate_complaint_id()
-    # first_name = extract_sender(body)["first_name"]
-    
-    # add_complaint_data(complaint_id, "complaint_email", complaint_email)
-    # add_complaint_data(complaint_id, "conplain_subject", subject)
-    # add_complaint_data(complaint_id, "complain_body", body)
     logger.info(f"Processing complaint {complaint_id} from {complaint_email}")
 
     bot = SimplifiedRAG()
